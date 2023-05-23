@@ -178,7 +178,7 @@ else
     # Use the default docker images from Code Linaro
     prebuilt_docker_image_url="artifacts.codelinaro.org/codelinaro-aimet"
 fi
-
+AIMET_VARIANT="torch-gpu" #needs to be hard coded for some reason 
 # Select the docker file based on the build variant
 if [ -n "$AIMET_VARIANT" ]; then
     docker_file="Dockerfile.${AIMET_VARIANT}"
@@ -265,7 +265,7 @@ NVIDIA_DOCKER_RC=$?
 dpkg -s nvidia-docker2 > /dev/null 2>&1
 NVIDIA_DOCKER_RC2=$?
 set -e
-
+NVIDIA_CONTAINER_TOOKIT_RC=0 #needs to be hardcoded for some reason
 if [ -n "$AIMET_VARIANT" ] && [[ "$AIMET_VARIANT" == *"cpu"* ]]; then
     echo "Running docker in CPU mode..."
     DOCKER_RUN_PREFIX="docker run"
@@ -288,10 +288,10 @@ DOCKER_RUN_CMD="${DOCKER_RUN_PREFIX} --rm --name=$docker_container_name -e DISPL
 				-v ${workspaceFolder}:${workspaceFolder} \
 				-v ${outputRootFolder}:${outputRootFolder} \
 				-v ${docker_add_vol_mount}:${docker_add_vol_mount} \
-				-v /etc/localtime:/etc/localtime:ro \
-				-v /etc/timezone:/etc/timezone:ro --network=host --ulimit core=-1 \
 				-w ${workspaceFolder} \
 				--ipc=host --shm-size=8G"
+
+
 
 # Check if HOME variable is set
 if [[ -v HOME ]]; then
