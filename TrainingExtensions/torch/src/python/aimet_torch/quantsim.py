@@ -145,7 +145,11 @@ class QuantizationSimModel:
                  quant_scheme: Union[str, QuantScheme] = QuantScheme.post_training_tf_enhanced,
                  rounding_mode: str = 'nearest', default_output_bw: int = 8, default_param_bw: int = 8,
                  in_place: bool = False, config_file: str = None,
-                 default_data_type: QuantizationDataType = QuantizationDataType.int):
+                 default_data_type: QuantizationDataType = QuantizationDataType.int,
+                 activ_data_type: QuantizationDataType = None,
+                 param_data_type: QuantizationDataType = None,
+                 activ_format=None,
+                 param_format=None):
         """
         Constructor for QuantizationSimModel.
 
@@ -164,12 +168,24 @@ class QuantizationSimModel:
                                  Possible options are QuantizationDataType.int and QuantizationDataType.float.
                                  Note that the mode default_data_type=QuantizationDataType.float is only supported with
                                  default_output_bw=16 and default_param_bw=16
+        
+        :activ_data_type: data type for inputs/outputs
+        :param_data_type: data type for parameters
+        :activ_format: float format for activations. E,M
+        :param_format: float format for params. E,M
+
         """
-        # Perform sanity checks on inputs
-        validate_quantsim_inputs(quant_scheme, rounding_mode, default_output_bw, default_param_bw,
-                                 default_data_type)
+        #Perform sanity checks on inputs. Skip to allow fp bw < 8
+        #validate_quantsim_inputs(quant_scheme, rounding_mode, default_output_bw, default_param_bw,
+        #                         default_data_type)
 
         # save some parameters
+        self.default_data_type = default_data_type
+        self.activ_data_type = activ_data_type
+        self.param_data_type = param_data_type
+        self.activ_format = activ_format
+        self.param_format = param_format
+
         if in_place:
             self.model = model
         else:
@@ -1134,9 +1150,19 @@ class QuantizationSimModel:
             quant_scheme_for_initialization = QuantScheme.post_training_tf_enhanced
 
         # TODO add quant_scheme_for_initialization for FP8 case
-        quantized_module = quantizer_wrapper_type(module_to_quantize, self._default_param_bw, self._default_output_bw,
-                                                  self._rounding_mode, quant_scheme_for_initialization, num_inputs=num_in_tensors,
-                                                  num_outputs=num_out_tensors, data_type=data_type)
+        #modified for FP
+        if quantizer_wrapper_type == StaticGridQuantWrapper:
+            quantized_module = quantizer_wrapper_type(module_to_quantize, self._default_param_bw, self._default_output_bw,
+                                                      self._rounding_mode, quant_scheme_for_initialization, num_inputs=num_in_tensors,
+                                                      num_outputs=num_out_tensors, data_type=data_type,
+                                                      activ_data_type = self.activ_data_type,
+                                                      param_data_type = self.param_data_type,
+                                                      activ_format = self.activ_format,
+                                                      param_format = self.param_format)
+        else:
+            quantized_module = quantizer_wrapper_type(module_to_quantize, self._default_param_bw, self._default_output_bw,
+                                                      self._rounding_mode, quant_scheme_for_initialization, num_inputs=num_in_tensors,
+                                                      num_outputs=num_out_tensors, data_type=data_type)
 
         return quantized_module
 

@@ -76,7 +76,8 @@ TF_ENHANCED_STRIDE_FACTOR = 2
 
 def tensor_quantizer_factory(bitwidth: int, round_mode: str, quant_scheme: QuantScheme,
                              use_symmetric_encodings: bool, enabled_by_default: bool,
-                             data_type: QuantizationDataType = QuantizationDataType.int):
+                             data_type: QuantizationDataType = QuantizationDataType.int,
+                             float_format=None):
     """
     Instantiates TensorQuantizer depending on the quant_scheme
     :param bitwidth: Quantization bitwidth
@@ -94,13 +95,13 @@ def tensor_quantizer_factory(bitwidth: int, round_mode: str, quant_scheme: Quant
 
         tensor_quantizer = StaticGridPerTensorQuantizer(bitwidth, round_mode, quant_scheme,
                                                         use_symmetric_encodings, enabled_by_default,
-                                                        data_type=data_type)
+                                                        data_type=data_type, float_format=float_format )
 
     elif quant_scheme in (QuantScheme.training_range_learning_with_tf_init,
                           QuantScheme.training_range_learning_with_tf_enhanced_init):
 
         tensor_quantizer = LearnedGridTensorQuantizer(bitwidth, round_mode, quant_scheme, use_symmetric_encodings,
-                                                      enabled_by_default, data_type)
+                                                      enabled_by_default, data_type)#, fp_format=fp_format )
     else:
         raise AssertionError("Unsupported quant_scheme: " + str(quant_scheme))
 
@@ -200,7 +201,11 @@ class QcQuantizeWrapper(nn.Module):
     # pylint: disable=too-many-arguments
     def __init__(self, module_to_wrap: nn.Module, weight_bw: int, activation_bw: int, round_mode,
                  quant_scheme: QuantScheme, is_output_quantized=True, is_symmetric=False, num_inputs=1, num_outputs=1,
-                 data_type: QuantizationDataType = QuantizationDataType.int):
+                 data_type: QuantizationDataType = QuantizationDataType.int,
+                 activ_data_type=None,
+                 param_data_type=None,
+                 activ_format=None,
+                 param_format=None):
         """
         Constructor
         :param module_to_wrap: Module that will be wrapped with this custom op
@@ -215,17 +220,27 @@ class QcQuantizeWrapper(nn.Module):
         """
         super(QcQuantizeWrapper, self).__init__()
 
-        if data_type == QuantizationDataType.float and weight_bw not in [8, 16]:
-            raise ValueError('weight_bw in [8, 16] is the only supported configuration with floating point data type')
+        #if data_type == QuantizationDataType.float and weight_bw not in [8, 16]:
+        #    raise ValueError('weight_bw in [8, 16] is the only supported configuration with floating point data type')
 
-        if data_type == QuantizationDataType.float and activation_bw not in [8, 16]:
-            raise ValueError('activation_bw in [8, 16] is the only supported configuration with floating point data type')
+        #if data_type == QuantizationDataType.float and activation_bw not in [8, 16]:
+        #    raise ValueError('activation_bw in [8, 16] is the only supported configuration with floating point data type')
+        
+        if data_type==QuantizationDataType.float and activation_bw != 16 and  (activ_data_type==None or param_data_type==None):
+            raise ValueError('need to specify activ_data_type and param_data_type for fp quantization')
+
+        if activ_data_type == QuantizationDataType.float and activ_data_type==None:
+            raise ValueError('need to specify E,M format for FP quant for activations')
+
+        if param_data_type == QuantizationDataType.float and param_data_type==None:
+            raise ValueError('need to specify E,M format for FP quant for params')
 
         self.output_quantizers = [tensor_quantizer_factory(activation_bw, round_mode,
                                                            quant_scheme,
                                                            is_symmetric,
                                                            enabled_by_default=is_output_quantized,
-                                                           data_type=data_type)
+                                                           data_type=data_type,
+                                                           float_format=activ_data_type)
                                   for _ in range(num_outputs)]
 
         self._mode = QcQuantizeOpMode.ANALYSIS
@@ -239,14 +254,16 @@ class QcQuantizeWrapper(nn.Module):
                                                                    quant_scheme,
                                                                    is_symmetric,
                                                                    enabled_by_default=True,
-                                                                   data_type=data_type)
+                                                                   data_type=data_type,
+                                                                   float_format=param_data_type)
 
         # Create quantizer for layer input
         self.input_quantizers = [tensor_quantizer_factory(activation_bw, round_mode,
                                                           quant_scheme,
                                                           is_symmetric,
                                                           enabled_by_default=False,
-                                                          data_type=data_type)
+                                                          data_type=data_type,
+                                                          float_format=activ_data_type)
                                  for _ in range(num_inputs)]
 
         self._quant_scheme = quant_scheme
@@ -451,7 +468,11 @@ class StaticGridQuantWrapper(QcQuantizeWrapper):
     # pylint: disable=too-many-arguments
     def __init__(self, module_to_wrap: nn.Module, weight_bw: int, activation_bw: int, round_mode, quant_scheme,
                  is_output_quantized=True, is_symmetric=False, num_inputs=1, num_outputs=1,
-                 data_type: QuantizationDataType = QuantizationDataType.int):
+                 data_type: QuantizationDataType = QuantizationDataType.int,
+                 activ_data_type=None,
+                 param_data_type=None,
+                 activ_format=None,
+                 param_format=None):
         """
         Constructor
         :param module_to_wrap: Module that will be wrapped with this custom op
@@ -469,7 +490,13 @@ class StaticGridQuantWrapper(QcQuantizeWrapper):
 
         super(StaticGridQuantWrapper, self).__init__(module_to_wrap, weight_bw, activation_bw, round_mode, quant_scheme,
                                                      is_output_quantized, is_symmetric, num_inputs,
-                                                     num_outputs, data_type)
+                                                     num_outputs, data_type,
+                                                     activ_data_type,
+                                                     param_data_type,
+                                                     activ_format,
+                                                     param_format)
+        
+
 
     def forward(self, *inputs):
         """

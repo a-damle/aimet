@@ -42,7 +42,8 @@ import torch
 from aimet_common.defs import QuantScheme
 
 
-NUM_MANTISSA_BITS = 3
+NUM_MANTISSA_BITS = None
+NUM_EXP_BITS = None
 
 
 def init_minmax(tensor, tensor_quantizer, per_channel):
@@ -66,19 +67,26 @@ def init_minmax(tensor, tensor_quantizer, per_channel):
     return maxval
 
 
-def mantissa_bits_to_device(tensor):
+def mantissa_bits_to_device(tensor, data_format):
     """
     Ensure NUM_MANTISSA_BITS is copied to the same device as tensor (only once)
     """
     global NUM_MANTISSA_BITS  # pylint: disable=global-statement
-    if not isinstance(NUM_MANTISSA_BITS, torch.Tensor):
-        NUM_MANTISSA_BITS = torch.Tensor([NUM_MANTISSA_BITS]).to(tensor.device)
+    global NUM_EXP_BITS  # pylint: disable=global-statement
+    #if not isinstance(NUM_MANTISSA_BITS, torch.Tensor):
+    #    NUM_MANTISSA_BITS = torch.Tensor([NUM_MANTISSA_BITS]).to(tensor.device)
+    NUM_MANTISSA_BITS = torch.Tensor([data_format[1]]).to(tensor.device)
+    NUM_EXP_BITS = torch.Tensor([data_format[0]]).to(tensor.device)
 
 
-def init_mse(tensor, tensor_quantizer, per_channel):
+def init_mse(tensor, tensor_quantizer, per_channel, data_format):
     """
     MSE initialization. Nearly equivalent to tf_enhanced
     """
+
+    if data_format == None:
+        raise ValueError('data_format needs to be E,M')
+
     channel = tensor_quantizer.channel_axis
     if per_channel:
         mxs = [torch.max(torch.abs(xc.min()), torch.abs(xc.max())) for xc in tensor.split(1, dim=channel)]
@@ -97,7 +105,7 @@ def init_mse(tensor, tensor_quantizer, per_channel):
     if per_channel:
         meandims.remove(channel)
 
-    mantissa_bits_to_device(tensor)
+    mantissa_bits_to_device(tensor,data_format)
 
     for i, maxval in enumerate(linspaces):
         xfp = quantize_to_fp8(tensor, maxval, NUM_MANTISSA_BITS, channel)
@@ -124,11 +132,15 @@ INIT_MAP = {
 }
 
 
-def fp8_quantizer(tensor, tensor_quantizer, _):
+def fp8_quantizer(tensor, tensor_quantizer, data_format, _):
     """
     FP8 quantization entry function.
     """
-    mantissa_bits_to_device(tensor)
+    
+    if data_format == None:
+        raise ValueError('data_format needs to be E,M')
+
+    mantissa_bits_to_device(tensor, data_format)
 
     if not hasattr(tensor_quantizer, 'fp8_maxval') or tensor_quantizer.fp8_maxval is None:
         raise ValueError('tensor_quantizer.fp8_maxval not present or not initialized!')
@@ -154,7 +166,8 @@ def quantize_to_fp8(x_float: torch.Tensor,
     # mantissa_bits = torch.clamp(torch.round(mantissa_bits), 1, 7)
 
     # Compute exponent bits from the (learned) number of exponent bits. NB: assumes FP8
-    exponent_bits = 7 - mantissa_bits
+    #exponent_bits = 7 - mantissa_bits
+    exponent_bits = NUM_EXP_BITS
 
     # Tensorized per-channel quantization: ensure that maxval has the same number of
     # dimensions as x, where the channel that is individually quantized has size C,

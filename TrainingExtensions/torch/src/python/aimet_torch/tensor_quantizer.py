@@ -146,7 +146,8 @@ class StaticGridTensorQuantizer(TensorQuantizer):
 
     def __init__(self, bitwidth: int, round_mode: libpymo.RoundingMode, quant_scheme: QuantScheme,
                  use_symmetric_encodings: bool, enabled_by_default: bool,
-                 data_type: QuantizationDataType = QuantizationDataType.int):
+                 data_type: QuantizationDataType = QuantizationDataType.int,
+                 float_format=None):
         """
         Constructor
 
@@ -161,6 +162,7 @@ class StaticGridTensorQuantizer(TensorQuantizer):
         self._cppOp = None
         self._encoding = None
         self.fp8_maxval = None
+        self.data_format = float_format
 
     def __str__(self):
         stream = io.StringIO(newline='\n')
@@ -287,10 +289,10 @@ class StaticGridTensorQuantizer(TensorQuantizer):
             elif self.data_type == QuantizationDataType.float:
                 if self.bitwidth == 16:
                     self._encoding = None
-                elif self.bitwidth == 8:
-                    self._encoding = [libpymo.TfEncoding()]
                 else:
-                    raise ValueError("Only bitwidths [8, 16] allowed for float data type, not ", str(self.bitwidth))
+                    self._encoding = [libpymo.TfEncoding()]
+                #else:
+                #    raise ValueError("Only bitwidths [8, 16] allowed for float data type, not ", str(self.bitwidth))
             else:
                 for op in self._cppOp:
                     encoding, is_encoding_valid = op.getEncoding(self.bitwidth, self.use_symmetric_encodings,
@@ -405,7 +407,8 @@ class StaticGridPerTensorQuantizer(StaticGridTensorQuantizer):
 
     def __init__(self, bitwidth: int, round_mode: libpymo.RoundingMode, quant_scheme: QuantScheme,
                  use_symmetric_encodings: bool, enabled_by_default: bool,
-                 data_type: QuantizationDataType = QuantizationDataType.int):
+                 data_type: QuantizationDataType = QuantizationDataType.int,
+                 float_format=None):
         """
         Constructor
 
@@ -416,7 +419,7 @@ class StaticGridPerTensorQuantizer(StaticGridTensorQuantizer):
         :param enabled_by_default: True if quantization of tensor is enabled.  False otherwise.
         """
         super(StaticGridPerTensorQuantizer, self).__init__(bitwidth, round_mode, quant_scheme, use_symmetric_encodings,
-                                                           enabled_by_default, data_type)
+                                                           enabled_by_default, data_type,float_format)
 
         quant_scheme = MAP_QUANT_SCHEME_TO_PYMO[quant_scheme]
         self._cppOp = [AimetTensorQuantizer.AimetTensorQuantizer(quant_scheme)]
@@ -1056,19 +1059,19 @@ class QuantizeDequantize(torch.autograd.Function):
     """
 
     @staticmethod
-    def _quantize_float(tensor, tensor_quantizer, per_channel):
+    def _quantize_float(tensor, tensor_quantizer, per_channel, data_format=None):
         if tensor_quantizer.bitwidth == 16:
             quantized_tensor = tensor.half()
             quantized_tensor = quantized_tensor.float()
-        elif tensor_quantizer.bitwidth == 8:
-            quantized_tensor = fp8_quantizer(tensor, tensor_quantizer, per_channel)
         else:
-            raise ValueError('float data_type only supports bitwidth in {16, 8}')
+            quantized_tensor = fp8_quantizer(tensor, tensor_quantizer, per_channel, data_format )
+        #else:
+        #    raise ValueError('float data_type only supports bitwidth in {16, 8}')
 
         return quantized_tensor
 
     @staticmethod
-    def _per_tensor_quantize_dequantize(tensor, tensor_quantizer, round_mode):
+    def _per_tensor_quantize_dequantize(tensor, tensor_quantizer, round_mode, data_format=None ):
         """
         If the quantization data type is floating point, then call the pytorch functions to
         perform quantization followed by dequantization. Else call the custom function to
@@ -1077,7 +1080,7 @@ class QuantizeDequantize(torch.autograd.Function):
 
         # pylint:disable = protected-access
         if tensor_quantizer.data_type == QuantizationDataType.float:
-            quantized_tensor = QuantizeDequantize._quantize_float(tensor, tensor_quantizer, False)
+            quantized_tensor = QuantizeDequantize._quantize_float(tensor, tensor_quantizer, False, data_format)
         else:
             # If we have a half-float tensor, just upcast it to float
             # Need to change this when libpymo can handle half-float tensors
@@ -1093,10 +1096,10 @@ class QuantizeDequantize(torch.autograd.Function):
         return quantized_tensor
 
     @staticmethod
-    def _per_channel_quantize_dequantize(tensor, tensor_quantizer, round_mode):
+    def _per_channel_quantize_dequantize(tensor, tensor_quantizer, round_mode, data_format=None ):
 
         if tensor_quantizer.data_type == QuantizationDataType.float:
-            quantized_tensor = QuantizeDequantize._quantize_float(tensor, tensor_quantizer, True)
+            quantized_tensor = QuantizeDequantize._quantize_float(tensor, tensor_quantizer, True, data_format)
         else:
             # If we have a half-float tensor, just upcast it to float
             # Need to change this when libpymo can handle half-float tensors
@@ -1137,10 +1140,10 @@ class QuantizeDequantize(torch.autograd.Function):
         if tensor_quantizer.enabled and tensor_quantizer.bitwidth != 32:
             if isinstance(tensor_quantizer, StaticGridPerChannelQuantizer):
                 quantized_tensor = QuantizeDequantize._per_channel_quantize_dequantize(tensor, tensor_quantizer,
-                                                                                       round_mode)
+                                                                                       round_mode,data_format=tensor_quantizer.data_format)
             else:
                 quantized_tensor = QuantizeDequantize._per_tensor_quantize_dequantize(tensor, tensor_quantizer,
-                                                                                      round_mode)
+                                                                                      round_mode,data_format=tensor_quantizer.data_format)
             ctx.save_for_backward(tensor) # `tensor` is needed for backward when quantizer is enabled
         else:
             quantized_tensor = tensor
