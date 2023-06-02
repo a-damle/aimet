@@ -46,7 +46,7 @@ NUM_MANTISSA_BITS = None
 NUM_EXP_BITS = None
 
 
-def init_minmax(tensor, tensor_quantizer, per_channel):
+def init_minmax(tensor, tensor_quantizer, per_channel,data_format=None):
     """
     Minmax initialization.
     """

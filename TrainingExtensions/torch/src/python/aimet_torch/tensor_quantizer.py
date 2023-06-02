@@ -167,13 +167,15 @@ class StaticGridTensorQuantizer(TensorQuantizer):
     def __str__(self):
         stream = io.StringIO(newline='\n')
         stream.write('StaticGrid TensorQuantizer:\n')
-        stream.write('    quant-scheme:{}, round_mode={}, bitwidth={}, enabled={}\n'.format(self._quant_scheme,
-                                                                                            self.round_mode,
-                                                                                            self.bitwidth,
-                                                                                            self.enabled))
+        stream.write('    quant-scheme:{}, data-type:{}, float-format:{}, round_mode={}, bitwidth={}, enabled={}\n'.format(self._quant_scheme,
+                                                                                                                           self.data_type,
+                                                                                                                           self.data_format,
+                                                                                                                           self.round_mode,
+                                                                                                                           self.bitwidth,
+                                                                                                                           self.enabled))
         if self._encoding:
             for enc in self._encoding:
-                stream.write('    min:{}, max={}, delta={}, offset={}\n'.format(enc.min, enc.max,
+                stream.write(' fp8_maxval:{}, min:{}, max={}, delta={}, offset={}\n'.format(self.fp8_maxval, enc.min, enc.max,
                                                                                 enc.delta, enc.offset))
         else:
             stream.write('    no encoding\n')
@@ -460,8 +462,8 @@ class StaticGridPerTensorQuantizer(StaticGridTensorQuantizer):
             if self.bitwidth == 32:
                 return
             if self.data_type == QuantizationDataType.float:
-                if self.bitwidth == 8:
-                    maxval = INIT_MAP[self.quant_scheme](tensor, self, False).to(tensor.device)
+                if self.bitwidth < 9:
+                    maxval = INIT_MAP[self.quant_scheme](tensor, self, False, data_format=self.data_format ).to(tensor.device)
                     self.update_maxval(maxval)
                     ec = libpymo.TfEncoding()
                     ec.max = float(self.fp8_maxval)
@@ -543,8 +545,8 @@ class StaticGridPerChannelQuantizer(StaticGridTensorQuantizer):
             if self.bitwidth == 32:
                 return
             if self.data_type == QuantizationDataType.float:
-                if self.bitwidth == 8:
-                    maxval = INIT_MAP[self.quant_scheme](tensor, self, True).to(tensor.device)
+                if self.bitwidth < 9:
+                    maxval = INIT_MAP[self.quant_scheme](tensor, self, True, data_format=self.data_format ).to(tensor.device)
                     self.update_maxval(maxval)
                     ecs = [libpymo.TfEncoding() for _ in range(self.fp8_maxval.shape[0])]
                     for idx, ec in enumerate(ecs):

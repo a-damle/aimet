@@ -234,13 +234,20 @@ class QcQuantizeWrapper(nn.Module):
 
         if param_data_type == QuantizationDataType.float and param_data_type==None:
             raise ValueError('need to specify E,M format for FP quant for params')
+        
+        #use data_type as default if others are not set
+        if activ_data_type == None:
+            activ_data_type = data_type
+        
+        if param_data_type == None:
+            param_data_type = data_type
 
         self.output_quantizers = [tensor_quantizer_factory(activation_bw, round_mode,
                                                            quant_scheme,
                                                            is_symmetric,
                                                            enabled_by_default=is_output_quantized,
-                                                           data_type=data_type,
-                                                           float_format=activ_data_type)
+                                                           data_type=activ_data_type,
+                                                           float_format=activ_format)
                                   for _ in range(num_outputs)]
 
         self._mode = QcQuantizeOpMode.ANALYSIS
@@ -254,16 +261,16 @@ class QcQuantizeWrapper(nn.Module):
                                                                    quant_scheme,
                                                                    is_symmetric,
                                                                    enabled_by_default=True,
-                                                                   data_type=data_type,
-                                                                   float_format=param_data_type)
+                                                                   data_type=param_data_type,
+                                                                   float_format=param_format)
 
         # Create quantizer for layer input
         self.input_quantizers = [tensor_quantizer_factory(activation_bw, round_mode,
                                                           quant_scheme,
                                                           is_symmetric,
                                                           enabled_by_default=False,
-                                                          data_type=data_type,
-                                                          float_format=activ_data_type)
+                                                          data_type=activ_data_type,
+                                                          float_format=activ_format)
                                  for _ in range(num_inputs)]
 
         self._quant_scheme = quant_scheme

@@ -276,6 +276,7 @@ if(NOT DEFINED AIMET_PACKAGE_PATH)
 endif(NOT DEFINED AIMET_PACKAGE_PATH)
 
 execute_process(COMMAND git config --get remote.origin.url WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE remote_url)
+set(remote_url "https://github.com/quic/aimet.git")
 if(NOT remote_url STREQUAL "")
   message(STATUS "Repo Remote URL = ${remote_url}")
   string(REGEX REPLACE "\n$" "" remote_url "${remote_url}")
